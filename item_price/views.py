@@ -103,7 +103,7 @@ def add_price(request):
                 new_f = datetime.strptime(new_price.date_finish, "%Y-%m-%d").date()
 
                 # 3 Условие для обработки варианта, новый интервал начинается раньше, чем заканчивается предыдущий
-                if old_f is None or old_s < new_s <= old_f:
+                if new_s > old_s and new_f >= old_f:
                     item = ItemPrice.objects.get(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                  date_finish=old_f)
                     item.date_finish = new_s - timedelta(days=1)
@@ -122,12 +122,23 @@ def add_price(request):
 
                 # 5 Интервал поглащает существующий
                 elif new_s <= old_s and new_f >= old_f:
+                    qs_item = ItemPrice.objects.filter(item=Item.objects.get(pk=params['pk']), date_start=old_s,
+                                                       date_finish=old_f)
+                    for item in qs_item:
+                        if item.pk != new_price.pk:
+                            item.delete()
+                            print('удачно удален')
+
+                # 2 Интервал входит в существующий
+                elif new_s >= old_s and new_f <= old_f:
                     item = ItemPrice.objects.get(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                  date_finish=old_f)
-                    if item.pk != new_price.pk:
-                        item.delete()
-                        print('удачно удален')
-                    # return HttpResponse('Добавлена новая цена и период ее действия для продукта "%s". <br/> '
-                    #                     'Удален предыдущий интервал, т.к. его перекрывал новый.' % product)
+                    item.date_finish = new_s - timedelta(days=1)
+                    item.save()
+                    new_date_start = new_f + timedelta(days=1)
+                    new = ItemPrice.objects.create(item=Item.objects.get(pk=params['pk']), price=item.price,
+                                                   date_start=new_date_start, date_finish=old_f)
+                    new.save()
+                    print('я тут был')
 
     return HttpResponse('Добавлена новая цена и период ее действия для продукта "%s"' % product)
