@@ -88,49 +88,64 @@ def add_price(request):
             new_price = add_price_function(item=Item.objects.get(pk=params['pk']), price=params['price'])
         product = Item.objects.get(pk=params['pk'])
 
-        for i in my_list:
-            # Старая дата начала действия цены
-            old_s = i.date_start
-            if old_s is None:
-                old_s = date(1, 1, 1)
-            # Старая дата окончания действия цены
-            old_f = i.date_finish
-            # Новая дата начала действия цены
-            if new_price.date_start:
-                new_s = datetime.strptime(new_price.date_start, "%Y-%m-%d").date()
-            # Новая дата окончания действия цены
-            if new_price.date_finish:
-                new_f = datetime.strptime(new_price.date_finish, "%Y-%m-%d").date()
+        new_s, new_f = (None, None)
+        # Новая дата начала действия цены
+        if new_price.date_start:
+            new_s = datetime.strptime(new_price.date_start, "%Y-%m-%d").date()
+        # Новая дата окончания действия цены
+        if new_price.date_finish:
+            new_f = datetime.strptime(new_price.date_finish, "%Y-%m-%d").date()
 
-                # 3 Условие для обработки варианта, новый интервал начинается раньше, чем заканчивается предыдущий
-                if new_s > old_s and new_f >= old_f:
+        print(new_s, new_f)
+
+        if new_s is None or new_f is None or new_s <= new_f:
+
+            for i in my_list:
+                # Старая дата начала действия цены
+                old_s = i.date_start
+                # Старая дата окончания действия цены
+                old_f = i.date_finish
+                print(old_s, old_f)
+
+                # 1 Интервал начинается в существующем, а заканчивается позже
+                if old_f is not None and new_s is not None and (old_s is None or new_s > old_s) and (new_f is None or
+                                                                                                     new_f >= old_f):
+                    print("Пришел в 1")
                     item = ItemPrice.objects.get(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                  date_finish=old_f)
                     item.date_finish = new_s - timedelta(days=1)
                     item.save()
+                    new_price.save()
                     # return HttpResponse('Добавлена новая цена и период ее действия для продукта "%s". <br/> '
                     #                     'Окончание действия цены в предыдущем интервале изменено.' % product)
 
-                # 1 Условие для обработки варианта, когда новый интервал заканчивается в существующем
-                elif new_s < old_s <= new_f < old_f:
+                # 2 Интервал начинается раньше, а заканчивается в существующем
+                elif old_s is not None and (new_s is None or new_s <= old_s) and new_f is not None and (old_f is None or
+                                                                                                        new_f < old_f):
+                    print("Пришел в 2")
                     item = ItemPrice.objects.get(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                  date_finish=old_f)
                     item.date_start = new_f + timedelta(days=1)
                     item.save()
+                    new_price.save()
                     # return HttpResponse('Добавлена новая цена и период ее действия для продукта "%s". <br/> '
                     #                     'Начало действия цены в предыдущем интервале изменено.' % product)
 
-                # 5 Интервал поглащает существующий
-                elif new_s <= old_s and new_f >= old_f:
+                # 3 Интервал поглащает существующий
+                elif (new_s is None or (old_s is not None and new_s <= old_s)) \
+                        and (new_f is None or (old_f is not None and new_f >= old_f)):
+                    print('Пришел в 3')
                     qs_item = ItemPrice.objects.filter(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                        date_finish=old_f)
                     for item in qs_item:
                         if item.pk != new_price.pk:
                             item.delete()
                             print('удачно удален')
+                    new_price.save()
 
-                # 2 Интервал входит в существующий
-                elif new_s >= old_s and new_f <= old_f:
+                # 4 Интервал входит в существующий
+                elif old_s is None or old_f is None or new_s is not None and new_f is not None and new_s > old_s and new_f < old_f:
+                    print('Пришел в 4')
                     item = ItemPrice.objects.get(item=Item.objects.get(pk=params['pk']), date_start=old_s,
                                                  date_finish=old_f)
                     item.date_finish = new_s - timedelta(days=1)
@@ -139,6 +154,9 @@ def add_price(request):
                     new = ItemPrice.objects.create(item=Item.objects.get(pk=params['pk']), price=item.price,
                                                    date_start=new_date_start, date_finish=old_f)
                     new.save()
-                    print('я тут был')
-
+                    new_price.save()
+                else:
+                    print('я тут 5 (else)')
+        else:
+            return HttpResponse('Дата окончания действия цены не может быть меньше даты начала')
     return HttpResponse('Добавлена новая цена и период ее действия для продукта "%s"' % product)
